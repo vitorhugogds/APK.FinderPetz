@@ -1,0 +1,86 @@
+//CODIGO PARA ARDUINO (NODEMCU V3 + SERVO MOTOR MG995 + FONTE CHAVEADA 5V 6A 30W ESTABILIZADA BIVOLT USO GERAL)
+
+#include <ESP8266WiFi.h>
+#include <Servo.h>
+
+const char* ssid = "Victor_2G";
+const char* password = "Victor10052004";
+
+WiFiServer server(80);
+Servo servoMotor;
+bool servoConectado = false;
+
+// Configuração IP fixo
+IPAddress local_IP(192, 168, 0, 143);
+IPAddress gateway(192, 168, 0, 1);
+IPAddress subnet(255, 255, 255, 0);
+
+void setup() {
+  Serial.begin(115200);
+
+  // Configura IP fixo antes de conectar WiFi
+  if (!WiFi.config(local_IP, gateway, subnet)) {
+    Serial.println("⚠ Falha na configuração do IP fixo");
+  }
+
+  // Conecta no Wi-Fi
+  WiFi.begin(ssid, password);
+  Serial.print("Conectando WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.println("WiFi conectado");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+
+  // Servo no pino D1 (GPIO5)
+  servoMotor.attach(D1);
+  delay(100);
+  servoMotor.write(160);   // Posição inicial (fechado)
+  servoConectado = true;
+
+  server.begin();
+}
+
+void loop() {
+  WiFiClient client = server.available();
+  if (!client) return;
+
+  while (!client.available()) {
+    delay(1);
+  }
+
+  String request = client.readStringUntil('\r');
+  Serial.println("Requisição recebida: " + request);
+  client.flush();
+
+  String response;
+  int statusCode = 200;
+
+  if (request.indexOf("/abrir") != -1) {
+    if (servoConectado) {
+      Serial.println("ServoMotor MG995: Aberto");
+      servoMotor.write(0);     // Abre
+      delay(700);            // Espera 7 milisegundos aberto
+      servoMotor.write(160);    // Fecha (posição inicial)
+      Serial.println("ServoMotor MG995: Fechado");
+      response = "{\"status\":\"OK\"}";
+    } else {
+      statusCode = 500;
+      response = "{\"status\":\"ERRO\",\"mensagem\":\"Servo não conectado\"}";
+    }
+  } else {
+    statusCode = 404;
+    response = "{\"status\":\"ERRO\",\"mensagem\":\"Rota não encontrada\"}";
+  }
+
+  client.println("HTTP/1.1 " + String(statusCode) + " OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  client.println(response);
+
+  delay(1);
+}
